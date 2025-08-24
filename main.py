@@ -2,14 +2,6 @@
 # -*- coding: utf-8 -*-
 """
 3D Black Hole with Gravitational Lensing (pygame + PyOpenGL)
-------------------------------------------------------------
-Features:
-- Orbit camera (LMB drag), scroll to zoom
-- Space-time grid (x-z plane)
-- Static luminous bodies (spheres)
-- Screen-space postprocess lensing shader that warps the entire scene near the BH
-- Black hole overlay (disc + soft glow)
-
 Keys:
 - ESC / Q : quit
 - R       : reset camera
@@ -36,22 +28,19 @@ from OpenGL.GLU import *
 WIN_W, WIN_H = 1280, 800
 FOV = 60.0
 NEAR, FAR = 0.1, 200.0
-
-# Camera spherical coordinates (orbit)
+# camera spherical coordinates (orbit)
 cam_dist = 18.0
 cam_yaw = 35.0
 cam_pitch = -15.0
-
-# Toggles
+# toggles
 show_grid = True
 enable_lensing = True
-
-# Lensing params (shader)
+# lensing params (shader)
 lens_strength = 0.16     # higher -> stronger bending
 lens_radius = 0.55       # fraction of screen half-min dimension (in NDC uv)
 event_horizon_radius_px = 70  # black disc radius in pixels (overlay)
 
-# Star bodies
+# star bodies
 STAR_POSITIONS = [
     ( 6.5,  2.2, -9.0, (1.0, 0.95, 0.2)),  # yellow
     (-7.0,  3.0, -12.0, (1.0, 0.4, 0.3)),  # red/orange
@@ -111,7 +100,7 @@ def create_fbo_tex(w, h):
     glBindFramebuffer(GL_FRAMEBUFFER, 0)
     return fbo, tex, rbo
 
-# Fullscreen quad (two triangles)
+# fullscreen quad (two triangles)
 def create_fs_quad():
     verts = [
         -1.0, -1.0,  0.0, 0.0,
@@ -132,9 +121,7 @@ def create_fs_quad():
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, len(idx)*4, idx_type(*idx), GL_STATIC_DRAW)
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0)
     return vbo, ebo
-
-# ---------- Postprocess shader ----------
-
+#postprocess shader
 POST_VS = """
 #version 120
 attribute vec2 aPos;
@@ -146,8 +133,8 @@ void main(){
 }
 """
 
-# Simple radial lensing. We treat BH at screen center.
-# We warp UVs by adding a displacement inversely proportional to distance to BH center.
+# bh is at screen center
+# we warp UVs by adding a displacement inversely proportional to distance to BH center.
 POST_FS = """
 #version 120
 uniform sampler2D uScene;
@@ -198,8 +185,7 @@ void main(){
     gl_FragColor = col;
 }
 """
-
-# ---------- Overlay (2D) drawing ----------
+# overlay 2d 
 def draw_black_hole_overlay(screen_w, screen_h, eh_px):
     # Switch to simple ortho and draw a black disc + glow as screen-space overlay
     glMatrixMode(GL_PROJECTION)
@@ -246,8 +232,7 @@ def draw_black_hole_overlay(screen_w, screen_h, eh_px):
     glPopMatrix()
     glMatrixMode(GL_MODELVIEW)
 
-# ---------- Scene drawing (fixed pipeline for simplicity) ----------
-
+# draw scene
 def set_perspective(w, h):
     glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
@@ -255,7 +240,6 @@ def set_perspective(w, h):
     glMatrixMode(GL_MODELVIEW)
 
 def set_camera():
-    # Camera orbit around origin
     glLoadIdentity()
     yaw_r = math.radians(cam_yaw)
     pitch_r = math.radians(cam_pitch)
@@ -263,7 +247,6 @@ def set_camera():
     y = cam_dist * math.sin(pitch_r)
     z = cam_dist * math.cos(pitch_r) * math.cos(yaw_r)
     gluLookAt(x, y, z,   0, 0, 0,   0, 1, 0)
-
 def draw_grid():
     if not show_grid: return
     glDisable(GL_LIGHTING)
@@ -279,13 +262,11 @@ def draw_grid():
         glVertex3f(-s*step, 0.0, i*step)
         glVertex3f( s*step, 0.0, i*step)
     glEnd()
-
 def draw_sphere(radius, color=(1,1,1), slices=32, stacks=24):
     glColor3f(*color)
     quad = gluNewQuadric()
     gluSphere(quad, radius, slices, stacks)
     gluDeleteQuadric(quad)
-
 def draw_scene_objects():
     # Stars (static luminous bodies)
     glEnable(GL_LIGHTING)
@@ -294,16 +275,13 @@ def draw_scene_objects():
     glLightfv(GL_LIGHT0, GL_DIFFUSE, (ctypes.c_float*4)(1.0, 1.0, 1.0, 1.0))
     glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, (ctypes.c_float*4)(0.5,0.5,0.5,1.0))
     glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 12.0)
-
     # draw stars
     for (sx, sy, sz, col) in STAR_POSITIONS:
         glPushMatrix()
         glTranslatef(sx, sy, sz)
         draw_sphere(0.6, color=col)
         glPopMatrix()
-
     glDisable(GL_LIGHTING)
-
     # (Optional) faint accretion disk as a textured/colored ring (simple color here)
     glPushMatrix()
     glRotatef(90, 1, 0, 0)  # lie flat in x-z
@@ -321,42 +299,24 @@ def draw_scene_objects():
     glEnd()
     glDisable(GL_BLEND)
     glPopMatrix()
-
-# ---------- Main ----------
-
 def main():
     global WIN_W, WIN_H
     global cam_dist, cam_yaw, cam_pitch
     global show_grid, enable_lensing
     global lens_strength, lens_radius, event_horizon_radius_px
-
     pygame.init()
     pygame.display.set_caption("Blackhole")
     pygame.display.set_mode((WIN_W, WIN_H), DOUBLEBUF | OPENGL)
-
-    # GL setup
     glViewport(0, 0, WIN_W, WIN_H)
     glEnable(GL_DEPTH_TEST)
     glClearColor(0.02, 0.05, 0.10, 1.0)
-
     set_perspective(WIN_W, WIN_H)
-
-    # Create FBO for scene render
     fbo, scene_tex, rbo = create_fbo_tex(WIN_W, WIN_H)
-
-    # Create fullscreen quad
     fs_vbo, fs_ebo = create_fs_quad()
-
-    # Build postprocess shader
     post_prog = link_program(POST_VS, POST_FS)
-    # Attribute locations (OpenGL 2.1 + #version 120 means we use glVertexAttribPointer by name)
-    # We'll pack aPos and aUV interleaved manually via client arrays for simplicity
-    # But to keep it short, we'll bind arrays ad-hoc when drawing.
-
     clock = pygame.time.Clock()
     dragging = False
     last_mx, last_my = 0, 0
-
     running = True
     while running:
         for e in pygame.event.get():
@@ -397,7 +357,6 @@ def main():
                 last_mx, last_my = mx, my
                 cam_yaw = (cam_yaw + dx * 0.3) % 360.0
                 cam_pitch = max(-85.0, min(85.0, cam_pitch + dy * 0.3))
-
             elif e.type == pygame.VIDEORESIZE:
                 WIN_W, WIN_H = e.w, e.h
                 pygame.display.set_mode((WIN_W, WIN_H), DOUBLEBUF | OPENGL)
@@ -408,76 +367,49 @@ def main():
                 glDeleteTextures(1, [scene_tex])
                 glDeleteRenderbuffers(1, [rbo])
                 fbo, scene_tex, rbo = create_fbo_tex(WIN_W, WIN_H)
-
-        # -------- 1) render scene into FBO --------
         glBindFramebuffer(GL_FRAMEBUFFER, fbo)
         glViewport(0, 0, WIN_W, WIN_H)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         set_perspective(WIN_W, WIN_H)
         set_camera()
-
         draw_grid()
         draw_scene_objects()
-
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
-
-        # -------- 2) postprocess lensing to screen --------
         glViewport(0, 0, WIN_W, WIN_H)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-
         glDisable(GL_DEPTH_TEST)
         glUseProgram(post_prog)
-
-        # Set uniforms
         uScene_loc = glGetUniformLocation(post_prog, "uScene")
         uRes_loc = glGetUniformLocation(post_prog, "uResolution")
         uStrength_loc = glGetUniformLocation(post_prog, "uStrength")
         uRadius_loc = glGetUniformLocation(post_prog, "uRadius")
         uEH_loc = glGetUniformLocation(post_prog, "uEHpx")
-
         glUniform1i(uScene_loc, 0)
         glActiveTexture(GL_TEXTURE0)
         glBindTexture(GL_TEXTURE_2D, scene_tex)
-
         glUniform2f(uRes_loc, float(WIN_W), float(WIN_H))
         glUniform1f(uStrength_loc, lens_strength if enable_lensing else 0.0)
         glUniform1f(uRadius_loc, lens_radius)
         glUniform1f(uEH_loc, float(event_horizon_radius_px))
-
-        # Bind FS quad and draw (client arrays for simplicity)
         glBindBuffer(GL_ARRAY_BUFFER, fs_vbo)
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, fs_ebo)
-
-        # aPos (xy), aUV (uv) interleaved: [x,y,u,v] per vertex
         stride = 4 * 4
-        # query attrib locations
         aPos = glGetAttribLocation(post_prog, "aPos")
         aUV  = glGetAttribLocation(post_prog, "aUV")
         glEnableVertexAttribArray(aPos)
         glEnableVertexAttribArray(aUV)
         glVertexAttribPointer(aPos, 2, GL_FLOAT, GL_FALSE, stride, ctypes.c_void_p(0))
         glVertexAttribPointer(aUV,  2, GL_FLOAT, GL_FALSE, stride, ctypes.c_void_p(8))
-
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, ctypes.c_void_p(0))
-
         glDisableVertexAttribArray(aPos)
         glDisableVertexAttribArray(aUV)
         glBindBuffer(GL_ARRAY_BUFFER, 0)
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0)
         glUseProgram(0)
         glEnable(GL_DEPTH_TEST)
-
-        # -------- 3) draw black hole overlay (disc + glow) --------
         draw_black_hole_overlay(WIN_W, WIN_H, event_horizon_radius_px)
-
-        # -------- 4) UI overlay (tiny text via pygame) --------
-        # You can draw text with pygame if desired by making a separate surface and blitting,
-        # but mixing is more code; keeping it minimal here.
-
         pygame.display.flip()
         clock.tick(60)
-
-    # Cleanup
     glDeleteFramebuffers(1, [fbo])
     glDeleteTextures(1, [scene_tex])
     glDeleteRenderbuffers(1, [rbo])
@@ -485,6 +417,6 @@ def main():
     glDeleteBuffers(1, [fs_ebo])
     pygame.quit()
     sys.exit(0)
-
 if __name__ == "__main__":
     main()
+
